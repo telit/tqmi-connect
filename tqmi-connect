@@ -1,0 +1,330 @@
+#!/usr/bin/env bash
+VERSION=0.1.0
+
+## Helper script to establish a QMUX connection. Once the connection is established
+## a file named "ip-session-qmimuxX" is created with several information like:
+##
+##   - IP, Gateway, DNS to configure the routing
+##   - HANDLE and CID to close the connection
+##
+## usage: tqmi-connect [options]
+##
+## examples:
+##
+##     Establish a network connection on qmimux0 (mux-id 1)
+##     $ tqmi-connect -d /dev/cdc-wdm0 --apn web.omnitel.it --iface wwan0 --mux_id 1
+##
+##     Establish a network connection on qmimux1 (mux-id 2)
+##     $ tqmi-connect -d /dev/cdc-wdm0 --apn mobile.vodafone.it --iface wwan0 --mux_id 2
+##
+##     Establish a network connection on qmimux1 (mux-id 2) creating a 3gpp profile
+##     $ tqmi-connect -d /dev/cdc-wdm0 --apn mobile.vodafone.it --iface wwan0 --mux_id 2 --profile
+##
+##     Release a network connection
+##     $ tqmi-connect -d /dev/cdc-wdm0 --apn mobile.vodafone.it --iface wwan0 --mux_id 2 --release
+##
+## options:
+##    -a, --apn <string>
+##    -d, --device <path>
+##    -i, --iface <string>  [default: wwan0]
+##    -c, --cid <number> [default: 0]
+##    -p, --ip_type <number> [default: 4]
+##    -m, --mux_id <number> [default: 1]
+##    -t, --table <string> [default: main]
+##    -v, --verbose
+##    -x, --profile
+##    -r, --release
+
+
+# CLInt GENERATED_CODE: start
+# Default values
+_iface=wwan0
+_cid=0
+_ip_type=4
+_mux_id=1
+_table=main
+
+# No-arguments is not allowed
+[ $# -eq 0 ] && sed -ne 's/^## \(.*\)/\1/p' $0 && exit 1
+
+# Converting long-options into short ones
+for arg in "$@"; do
+  shift
+  case "$arg" in
+"--apn") set -- "$@" "-a";;
+"--device") set -- "$@" "-d";;
+"--iface") set -- "$@" "-i";;
+"--cid") set -- "$@" "-c";;
+"--ip_type") set -- "$@" "-p";;
+"--mux_id") set -- "$@" "-m";;
+"--table") set -- "$@" "-t";;
+"--verbose") set -- "$@" "-v";;
+"--profile") set -- "$@" "-x";;
+"--release") set -- "$@" "-r";;
+  *) set -- "$@" "$arg"
+  esac
+done
+
+function print_illegal() {
+    echo Unexpected flag in command line \"$@\"
+}
+
+# Parsing flags and arguments
+while getopts 'hvxra:d:i:c:p:m:t:' OPT; do
+    case $OPT in
+        h) sed -ne 's/^## \(.*\)/\1/p' $0
+           exit 1 ;;
+        v) _verbose=1 ;;
+        x) _profile=1 ;;
+        r) _release=1 ;;
+        a) _apn=$OPTARG ;;
+        d) _device=$OPTARG ;;
+        i) _iface=$OPTARG ;;
+        c) _cid=$OPTARG ;;
+        p) _ip_type=$OPTARG ;;
+        m) _mux_id=$OPTARG ;;
+        t) _table=$OPTARG ;;
+        \?) print_illegal $@ >&2;
+            echo "---"
+            sed -ne 's/^## \(.*\)/\1/p' $0
+            exit 1
+            ;;
+    esac
+done
+# CLInt GENERATED_CODE: end
+
+# Compute qmux_id before setting -e or the script will exit immediately
+let _qmux_id=_mux_id-1
+set -e
+trap interrupt_cb INT
+
+if [[ $EUID != 0 ]]; then
+    echo "[!] run as root"
+    exit 1
+fi
+
+
+[ ! -z $_verbose ] && verbose="--verbose "
+
+mask2cdr () {
+   # Assumes there's no "255." after a non-255 byte in the mask
+   local x=${1##*255.}
+   set -- 0^^^128^192^224^240^248^252^254^ $(( (${#1} - ${#x})*2 )) ${x%%.*}
+   x=${1%%$3*}
+   echo $(( $2 + (${#x}/4) ))
+}
+
+
+
+configure() {
+    if [[ $_mux_id != 1 ]] && [[ $_mux_id != 2 ]]; then
+        echo "[!] MUX ID must be either 1 or 2"
+        exit 1
+    fi
+
+    # Unset main interface
+    ip link set "$_iface" down
+
+    echo "Setting data format..."
+    qmicli -p -d $_device --set-expected-data-format=raw-ip
+    cmd="qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap"
+    echo "$cmd"
+    $cmd
+
+    curr_mux_id=$(cat /sys/class/net/${_iface}/qmi/add_mux | grep "$_mux_id" | wc -l)
+    if [[ $curr_mux_id == 0 ]]; then
+        echo "Creating qmux with id ${_mux_id}"
+        echo ${_mux_id} > /sys/class/net/${_iface}/qmi/add_mux
+    fi
+}
+
+dms_get_model() {
+    echo "Getting modem model..."
+    cmd="qmicli -p -d $_device --dms-get-model"
+    echo $cmd
+    set +e
+    while true; do
+        output=$($cmd 2>&1)
+        check=$(echo "$output" | grep "Device model retrieved" | wc -l)
+        if [[ $check == 0 ]]; then
+            echo -n "."
+            sleep 1
+            continue
+        fi
+        break
+    done
+    set -e
+    FN980_QUIRK=$(echo "$output" | grep FN980 | wc -l)
+    if [[ $FN980_QUIRK == 1 ]] && [[ $_profile == 0 ]]; then
+        echo "FN980 modem detected, start-network with profile ID"
+        _profile=1
+    fi
+    echo ""
+    echo "$output"
+}
+
+nas_get_home_network() {
+    echo "Checking Network"
+    cmd="qmicli -p -d $_device --nas-get-home-network"
+    echo $cmd
+    output=$($cmd)
+    echo "$output"
+    check=$(echo "$output" | grep "Successfully got home network" | wc -l)
+    if [[ $check == 0 ]]; then
+        echo "[!] Modem is not connected to the Home network"
+        exit 1
+    fi
+}
+
+wds_get_client_id() {
+    if [[ "$_cid" == 0 ]]; then
+        cmd="qmicli $verbose -p -d $_device --wds-noop --client-no-release-cid"
+        echo $cmd
+        output=$($cmd)
+        _cid=$(echo "$output" | sed -n "s_\s*CID: '\([0-9]*\)'_\1_p")
+    fi
+}
+
+wds_bind_mux_data_port() {
+    echo "Binding mux data port ${_mux_id}"
+    cmd="qmicli -p -d $_device --wds-bind-mux-data-port=mux-id=${_mux_id},ep-iface-number=2 --client-no-release-cid --client-cid=$_cid"
+    echo $cmd
+    $cmd
+}
+
+wds_create_profile_id() {
+    if [[ "$_ip_type" == 4 ]]; then
+        _pdp_type="IP"
+    else if [[ "$_ip_type" == 6 ]]; then
+            _pdp_type="IPV6"
+        else
+            _pdp_type="IPV4V6"
+        fi
+    fi
+    cmd="qmicli $verbose -p -d "$_device" --wds-create-profile=3gpp,apn=$_apn,pdp-type=$_pdp_type --client-no-release-cid --client-cid=$_cid"
+    echo $cmd
+    output=$($cmd)
+    _profile_id=$(echo "$output" | sed -n "s_\s*Profile index: '\([0-9]*\)'_\1_p")
+}
+
+wds_start_network() {
+    if [[ -z "$_profile" ]]; then
+        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=apn=$_apn,ip-type=$_ip_type --client-no-release-cid --client-cid=$_cid"
+    else
+        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=3gpp-profile=$_profile_id --client-no-release-cid --client-cid=$_cid"
+    fi
+    echo "$cmd"
+    output=$($cmd)
+    echo "$output"
+    check=$(echo "$output" | grep "Network started" | wc -l)
+    if [[ $check == 0 ]]; then
+        echo "[!] start network failed"
+        exit 1
+    fi
+    handle=$(echo "$output" | sed -n "s_\s*Packet data handle: '\([0-9]*\)'_\1_p")
+}
+
+save_configuration() {
+    cmd="qmicli $verbose -p -d $_device --wds-get-current-settings --client-no-release-cid --client-cid=$_cid"
+    echo "$cmd"
+    output=$($cmd)
+    echo "$output"
+
+    ip=$(echo "$output" | sed -n "s/IPv4 address: \([0-9\./]*\)/\1/p" $FILE | sed -n "s/\s*//p")
+    gw=$(echo "$output" | sed -n "s/IPv4 gateway address: \([0-9\.]*\)/\1/p" $FILE | sed -n "s/\s*//p")
+    netmask=$(echo "$output" | sed -n "s/IPv4 subnet mask: \([0-9\.]*\)/\1/p" $FILE | sed -n "s/\s*//p")
+    network=$(mask2cdr $netmask)
+
+    dns1=$(echo "$output" | sed -n "s/IPv4 primary DNS: \([0-9\./]*\)/\1/p" $FILE | sed -n "s/\s*//p")
+    dns2=$(echo "$output" | sed -n "s/IPv4 secondary DNS: \([0-9\./]*\)/\1/p" $FILE | sed -n "s/\s*//p")
+
+    OUT=ip-session-qmimux$_qmux_id
+    [[ -f "$OUT" ]] && rm "$OUT"
+
+    echo "HANDLE=$handle"              >> $OUT
+    echo "CID=$_cid"                   >> $OUT
+    echo "IFACE=$_iface"               >> $OUT
+    echo "QMUX_IFACE=qmimux$_qmux_id"  >> $OUT
+    echo "MUX_ID=$_mux_id"             >> $OUT
+    echo "IP=$ip"                      >> $OUT
+    echo "GW=$gw"                      >> $OUT
+    echo "NETMASK=$netmask"            >> $OUT
+    echo "DNS1=$dns1"                  >> $OUT
+    echo "DNS2=$dns2"                  >> $OUT
+    echo "CDR=$network"                >> $OUT
+    echo "TABLE=$_table"               >> $OUT
+}
+
+wds_delete_profile() {
+    cmd="qmicli $verbose -p -d "$_device" --wds-delete-profile=3gpp,$_profile_id --client-no-release-cid --client-cid=$_cid"
+    echo "$cmd"
+    $cmd > /dev/null
+}
+
+check_connection() {
+    cmd="qmicli -p -d $_device --wds-get-packet-service-status --client-no-release-cid --client-cid=$_cid"
+    echo $cmd
+    output=$($cmd)
+    echo "$output" | grep "Connection status:"
+}
+
+set_network_interface() {
+    # Network interface needs to be set up after start-network
+    echo "Setting network address"
+    cmd="ip addr add $ip/$network dev qmimux$_qmux_id"
+    echo "$cmd"
+    $cmd
+
+    echo "Setting $_iface up"
+    ip link set "$_iface" up
+}
+
+release() {
+    source ip-session-qmimux$_qmux_id
+
+    echo "Stop network"
+    cmd="qmicli -p -d $_device --wds-stop-network=$HANDLE --client-cid=$CID --client-no-release-cid"
+    echo $cmd
+    $cmd
+
+    echo "set $IFACE down"
+    ip link set $IFACE down
+    echo "unset mux $MUX_ID"
+    echo $MUX_ID > /sys/class/net/${_iface}/qmi/del_mux
+}
+
+interrupt_cb() {
+    echo "[!] interrupted."
+    if [[ -z $_profile_id ]]; then
+        wds_delete_profile
+    fi
+}
+
+if [[ ! -z $_release ]]; then
+    release
+    exit 0
+fi
+
+echo "tqmi-connect" - $VERSION
+exit 0
+[[ $_release == 0 ]] && dms_get_model
+configure
+nas_get_home_network
+wds_get_client_id
+wds_bind_mux_data_port
+if [[ ! -z $_profile ]]; then
+    wds_create_profile_id
+    trap wds_delete_profile ERR
+fi
+wds_start_network
+check_connection
+save_configuration
+[[ ! -z $_profile ]] && wds_delete_profile
+set_network_interface
+
+echo "qmimux$_qmux_id configured"
+
+echo "################################################################"
+echo "Before configuring the routing for qmimux$_qmux_id, remember to"
+echo "bring it up (e.g. ip link set qmimux$_qmux_id up)"
+echo "################################################################"
