@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-VERSION=0.1.0
+VERSION=0.1.1
 
 ## Helper script to establish a QMUX connection. Once the connection is established
 ## a file named "ip-session-qmimuxX" is created with several information like:
@@ -29,6 +29,7 @@ VERSION=0.1.0
 ##    -i, --iface <string>  [default: wwan0]
 ##    -c, --cid <number> [default: 0]
 ##    -p, --ip_type <number> [default: 4]
+##    -u, --mtu <number> [default: 16384]
 ##    -m, --mux_id <number> [default: 1]
 ##    -t, --table <string> [default: main]
 ##    -v, --verbose
@@ -41,6 +42,7 @@ VERSION=0.1.0
 _iface=wwan0
 _cid=0
 _ip_type=4
+_mtu=16384
 _mux_id=1
 _table=main
 
@@ -56,6 +58,7 @@ for arg in "$@"; do
 "--iface") set -- "$@" "-i";;
 "--cid") set -- "$@" "-c";;
 "--ip_type") set -- "$@" "-p";;
+"--mtu") set -- "$@" "-u";;
 "--mux_id") set -- "$@" "-m";;
 "--table") set -- "$@" "-t";;
 "--verbose") set -- "$@" "-v";;
@@ -82,6 +85,7 @@ while getopts 'hvxra:d:i:c:p:m:t:' OPT; do
         i) _iface=$OPTARG ;;
         c) _cid=$OPTARG ;;
         p) _ip_type=$OPTARG ;;
+        u) _mtu=$OPTARG ;;
         m) _mux_id=$OPTARG ;;
         t) _table=$OPTARG ;;
         \?) print_illegal $@ >&2;
@@ -114,7 +118,11 @@ mask2cdr () {
    echo $(( $2 + (${#x}/4) ))
 }
 
-
+exe() {
+    cmd="$1"
+    echo $cmd
+    $cmd
+}
 
 configure() {
     if [[ $_mux_id != 1 ]] && [[ $_mux_id != 2 ]]; then
@@ -122,14 +130,14 @@ configure() {
         exit 1
     fi
 
-    # Unset main interface
-    ip link set "$_iface" down
+    echo "configure parent network interface"
+    exe("ip link set $_iface down")
+    exe("qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=802-3")
+    exe("ip link set $_iface mtu $_mtu")
 
     echo "Setting data format..."
-    qmicli -p -d $_device --set-expected-data-format=raw-ip
-    cmd="qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap"
-    echo "$cmd"
-    $cmd
+    exe("qmicli -p -d $_device --set-expected-data-format=raw-ip")
+    exe("qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap,dl-max-datagrams=32,dl-tatagram-max-size=$_mtu")
 
     curr_mux_id=$(cat /sys/class/net/${_iface}/qmi/add_mux | grep "$_mux_id" | wc -l)
     if [[ $curr_mux_id == 0 ]]; then
@@ -187,9 +195,7 @@ wds_get_client_id() {
 
 wds_bind_mux_data_port() {
     echo "Binding mux data port ${_mux_id}"
-    cmd="qmicli -p -d $_device --wds-bind-mux-data-port=mux-id=${_mux_id},ep-iface-number=2 --client-no-release-cid --client-cid=$_cid"
-    echo $cmd
-    $cmd
+    exe("qmicli -p -d $_device --wds-bind-mux-data-port=mux-id=${_mux_id},ep-iface-number=2 --client-no-release-cid --client-cid=$_cid")
 }
 
 wds_create_profile_id() {
@@ -271,24 +277,20 @@ check_connection() {
 set_network_interface() {
     # Network interface needs to be set up after start-network
     echo "Setting network address"
-    cmd="ip addr add $ip/$network dev qmimux$_qmux_id"
-    echo "$cmd"
-    $cmd
+    exe("ip addr add $ip/$network dev qmimux$_qmux_id")
 
     echo "Setting $_iface up"
-    ip link set "$_iface" up
+    exe("ip link set $_iface up")
 }
 
 release() {
     source ip-session-qmimux$_qmux_id
 
     echo "Stop network"
-    cmd="qmicli -p -d $_device --wds-stop-network=$HANDLE --client-cid=$CID --client-no-release-cid"
-    echo $cmd
-    $cmd
+    exe("qmicli -p -d $_device --wds-stop-network=$HANDLE --client-cid=$CID --client-no-release-cid")
 
     echo "set $IFACE down"
-    ip link set $IFACE down
+    exe("ip link set $IFACE down")
     echo "unset mux $MUX_ID"
     echo $MUX_ID > /sys/class/net/${_iface}/qmi/del_mux
 }
