@@ -132,13 +132,13 @@ configure() {
     fi
 
     echo "configure parent network interface"
-    exe("ip link set $_iface down")
-    exe("qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=802-3")
-    exe("ip link set $_iface mtu $_mtu")
+    exe "ip link set $_iface down"
+    exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=802-3"
+    exe "ip link set $_iface mtu $_mtu"
 
     echo "Setting data format..."
-    exe("qmicli -p -d $_device --set-expected-data-format=raw-ip")
-    exe("qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap,dl-max-datagrams=32,dl-tatagram-max-size=$_mtu")
+    exe "qmicli -p -d $_device --set-expected-data-format=raw-ip"
+    exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap,dl-max-datagrams=32,dl-datagram-max-size=$_mtu"
 
     curr_mux_id=$(cat /sys/class/net/${_iface}/qmi/add_mux | grep "$_mux_id" | wc -l)
     if [[ $curr_mux_id == 0 ]]; then
@@ -196,7 +196,7 @@ wds_get_client_id() {
 
 wds_bind_mux_data_port() {
     echo "Binding mux data port ${_mux_id}"
-    exe("qmicli -p -d $_device --wds-bind-mux-data-port=mux-id=${_mux_id},ep-iface-number=2 --client-no-release-cid --client-cid=$_cid")
+    exe "qmicli -p -d $_device --wds-bind-mux-data-port=mux-id=${_mux_id},ep-iface-number=2 --client-no-release-cid --client-cid=$_cid"
 }
 
 wds_create_profile_id() {
@@ -278,20 +278,20 @@ check_connection() {
 set_network_interface() {
     # Network interface needs to be set up after start-network
     echo "Setting network address"
-    exe("ip addr add $ip/$network dev qmimux$_qmux_id")
+    exe "ip addr add $ip/$network dev qmimux$_qmux_id"
 
     echo "Setting $_iface up"
-    exe("ip link set $_iface up")
+    exe "ip link set $_iface up"
 }
 
 release() {
     source ip-session-qmimux$_qmux_id
 
     echo "Stop network"
-    exe("qmicli -p -d $_device --wds-stop-network=$HANDLE --client-cid=$CID --client-no-release-cid")
+    exe "qmicli -p -d $_device --wds-stop-network=$HANDLE --client-cid=$CID --client-no-release-cid"
 
     echo "set $IFACE down"
-    exe("ip link set $IFACE down")
+    exe "ip link set $IFACE down"
     echo "unset mux $MUX_ID"
     echo $MUX_ID > /sys/class/net/${_iface}/qmi/del_mux
 }
