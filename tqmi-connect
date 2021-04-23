@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-VERSION=0.1.1
+VERSION="0.1.1-0"
 
 ## Helper script to establish a QMUX connection. Once the connection is established
 ## a file named "ip-session-qmimuxX" is created with several information like:
@@ -47,7 +47,7 @@ _mux_id=1
 _table=main
 
 # No-arguments is not allowed
-[ $# -eq 0 ] && sed -ne 's/^## \(.*\)/\1/p' $0 && exit 1
+[ $# -eq 0 ] && sed -ne 's/^## \(.*\)/\1/p' $0 && echo "tqmi-connect" $VERSION && exit 1
 
 # Converting long-options into short ones
 for arg in "$@"; do
@@ -91,6 +91,7 @@ while getopts 'hvxra:d:i:c:p:m:t:' OPT; do
         \?) print_illegal $@ >&2;
             echo "---"
             sed -ne 's/^## \(.*\)/\1/p' $0
+            echo "tqmi-connect" - $VERSION
             exit 1
             ;;
     esac
