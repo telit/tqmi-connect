@@ -308,7 +308,6 @@ if [[ ! -z $_release ]]; then
 fi
 
 echo "tqmi-connect" - $VERSION
-exit 0
 [[ $_release == 0 ]] && dms_get_model
 configure
 nas_get_home_network
