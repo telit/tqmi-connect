@@ -120,9 +120,30 @@ fi
 _cid=0
 _qmimux=
 
+# Error management
+STAGE_START=1   # before setting qmimux
+STAGE_QMIMUX=2  # after qmimux, before start network
+STAGE_START_NETWORK=3   # after start network
+STAGE_END=4     # successful end
+_stage=$STAGE_START
+#trap catch_interrupt INT
+#trap catch_err ERR
+trap catch_exit EXIT
+catch_exit() {
+    info "Cleaning up"
+    # Always remove the newly created profile, but if CID==0 the profile was not created yet.
+    [[ -n $_profile ]] && [[ $_cid != "0" ]] &&wds_delete_profile
 
-set -e
-trap interrupt_cb INT
+    # Script ended successfully, nothing to do
+    [[ $_stage = $STAGE_END ]] && exit 0
+
+    # Clean ups
+    [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid
+    [[ $_stage -ge $STAGE_START_NETWORK ]] && wds_stop_network
+    err "The script failed! Look above logs for more info"
+    exit 1
+}
+
 
 
 [ ! -z $_verbose ] && verbose="--verbose "
@@ -139,9 +160,10 @@ exe() {
     cmd="$1"
     echo "[>] $cmd"
     output=`$cmd`
-    if [ -n "$output" ]; then
-        echo "[<] $output"
-    fi
+    local errcode=$?
+    [[ -n "$output" ]] && echo "[<] $output"
+    [[ $errcode != "0" ]] && exit 1
+    return $errcode
 }
 
 add_qmux_manually() {
@@ -186,8 +208,7 @@ add_qmux() {
         # with an error message if the required mux-id is already in use
         err "mux-id 0x$_muxid is already in use."
         err "Please, select a different mux-id, or remove them all before trying again."
-        # unset _muxid so that the clean up function do not try to remove it
-        _muxid=
+        exit 1
     fi
 
     has_link_management=$(qmicli --help | grep link-management | wc -l)
@@ -202,6 +223,7 @@ add_qmux() {
     fi
 
     info "$_qmimux created"
+    _stage=$STAGE_QMIMUX
 }
 
 remove_qmux_manually() {
@@ -231,7 +253,7 @@ remove_qmux() {
     fi
 }
 
-configure_iface_and_qmux() {
+configure_iface() {
     info "configure parent network interface"
     exe "ip link set $_iface down"
     exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=802-3"
@@ -239,10 +261,6 @@ configure_iface_and_qmux() {
     info "Setting data format..."
     exe "qmicli -p -d $_device --set-expected-data-format=raw-ip"
     exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap,dl-max-datagrams=32,dl-datagram-max-size=$_mtu"
-
-    add_qmux $_iface $_muxid
-
-    info "Save $_qmimux name for releasing the connection later"
 }
 
 dms_get_model() {
@@ -259,7 +277,6 @@ dms_get_model() {
         fi
         break
     done
-    set -e
     FN980_QUIRK=$(echo "$output" | grep FN980 | wc -l)
     if [[ $FN980_QUIRK == 1 ]] && [[ $_profile == 0 ]]; then
         info "FN980 modem detected, start-network with profile ID"
@@ -270,7 +287,6 @@ dms_get_model() {
 dms_get_software_version() {
 info "Getting software version..."
     cmd="qmicli -p -d $_device --dms-get-software-version"
-    set +e
     while true; do
         exe "$cmd"
         check=$(echo "$output" | grep "Software version" | wc -l)
@@ -281,7 +297,6 @@ info "Getting software version..."
         fi
         break
     done
-    set -e
 }
 
 nas_get_home_network() {
@@ -334,7 +349,8 @@ wds_start_network() {
         err "start network failed"
         exit 1
     fi
-    handle=$(echo "$output" | sed -n "s_\s*Packet data handle: '\([0-9]*\)'_\1_p")
+    _handle=$(echo "$output" | sed -n "s_\s*Packet data handle: '\([0-9]*\)'_\1_p")
+    _stage=$STAGE_START_NETWORK
 }
 
 save_configuration_to_file() {
@@ -353,7 +369,7 @@ save_configuration_to_file() {
     OUT=ip-session-$_qmimux
     [[ -f "$OUT" ]] && rm "$OUT"
 
-    echo "HANDLE=$handle"       >> $OUT
+    echo "HANDLE=$_handle"      >> $OUT
     echo "CID=$_cid"            >> $OUT
     echo "IFACE=$_iface"        >> $OUT
     echo "QMUX_IFACE=$_qmimux"  >> $OUT
@@ -372,12 +388,17 @@ wds_delete_profile() {
     info "deleting profile $_profile_id"
     cmd="qmicli $verbose -p -d "$_device" --wds-delete-profile=3gpp,$_profile_id --client-no-release-cid --client-cid=$_cid"
     exe "$cmd"
+    # unset profile_id to prevent future attempts to delete it again
+    _profile_id=
 }
 
 check_connection_status() {
     cmd="qmicli -p -d $_device --wds-get-packet-service-status --client-no-release-cid --client-cid=$_cid"
     echo $cmd
     output=$($cmd)
+    if [[ $? != 0 ]]; then
+        exit 1
+    fi
     echo "$output" | grep "Connection status:"
 }
 
@@ -390,28 +411,23 @@ set_network_address() {
     exe "ip link set $_iface up"
 }
 
+wds_stop_network() {
+    local cid=${CID:-$_cid}
+    local handle=${HANDLE:-$_handle}
+    info "Stop network"
+    exe "qmicli -p -d $_device --wds-stop-network=$handle --client-cid=$cid --client-no-release-cid"
+}
+
 release() {
     configuration="ip-session-$_iface"
     source $configuration
-
-    info "Stop network"
-    exe "qmicli -p -d $_device --wds-stop-network=$HANDLE --client-cid=$CID --client-no-release-cid"
-
+    wds_stop_network
     info "set $IFACE down"
     exe "ip link set $IFACE down"
     info "Unlink $QMUX_IFACE"
     remove_qmux $IFACE $QMUX_IFACE $MUX_ID
-    #exe "qmicli -p --device $_device --link-delete=link-iface=$QMUX_IFACE"
     info "Deleting '$configuration' configuration file."
     exe "rm $configuration"
-}
-
-interrupt_cb() {
-    err "interrupted."
-    if [[ -n $_profile_id ]]; then
-        wds_delete_profile
-    fi
-    exit 1
 }
 
 info "tqmi-connect" $VERSION
@@ -423,18 +439,15 @@ fi
 if [[ ! -z $_connect ]]; then
     dms_get_model
     dms_get_software_version
-    configure_iface_and_qmux
+    configure_iface
+    add_qmux $_iface $_muxid
     nas_get_home_network
     wds_get_client_id
     wds_bind_mux_data_port
-    if [[ ! -z $_profile ]]; then
-        wds_create_profile_id
-        trap wds_delete_profile ERR
-    fi
+    [[ ! -z $_profile ]] && wds_create_profile_id
     wds_start_network
     check_connection_status
     save_configuration_to_file
-    [[ ! -z $_profile ]] && wds_delete_profile
     set_network_address
 
     info "################################################################"
@@ -444,3 +457,4 @@ if [[ ! -z $_connect ]]; then
     info "bring it up (e.g. ip link set $_qmimux up)"
     info "################################################################"
 fi
+_stage=$STAGE_END
