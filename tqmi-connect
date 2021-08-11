@@ -140,7 +140,7 @@ catch_exit() {
     # Clean ups
     [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid
     [[ $_stage -ge $STAGE_START_NETWORK ]] && wds_stop_network
-    err "The script failed! Look above logs for more info"
+    err "The script failed! Look logs above for more info"
     exit 1
 }
 
@@ -175,7 +175,12 @@ add_qmux_manually() {
     # the new one should be qmimuxN (e.g. qmimux2)
     qmimux_count=$(cat /sys/class/net/$iface/qmi/add_mux | wc -l)
     _qmimux=qmimux$qmimux_count
-    echo $muxid > /sys/class/net/$iface/qmi/add_mux
+    info "echo $mux_id > /sys/class/net/$iface/qmi/add_mux"
+    echo $mux_id > /sys/class/net/$iface/qmi/add_mux
+    if [[ $? != 0 ]]; then
+        err "Could not create qmimux"
+        exit 1
+    fi
 }
 
 add_qmux_via_qmicli() {
@@ -201,7 +206,7 @@ add_qmux() {
     local iface=$1
     local mux_id=$2
 
-    info "Creating qmux with id 0x$mux_id"
+    info "Creating qmux with id $mux_id"
     curr_mux_id=$(cat /sys/class/net/$_iface/qmi/add_mux | grep $mux_id | wc -l)
     if [[ $curr_mux_id != "0" ]]; then
         # We can not get the qmimux associated with a given mux-id, so we exit
@@ -231,8 +236,12 @@ remove_qmux_manually() {
     # configuration file.
     local iface=$1
     local mux_id=$2
-    info "deleting mux-id 0x$mux_id"
+    info "echo $mux_id > /sys/class/net/$iface/qmi/del_mux"
     echo $mux_id > /sys/class/net/$iface/qmi/del_mux
+    if [[ $? != 0 ]]; then
+        err "Could not remove qmimux"
+        exit 1
+    fi
 }
 
 remove_qmux_via_qmicli() {
