@@ -452,7 +452,8 @@ release() {
     exe "rm $configuration"
 }
 
-info "tqmi-connect" $VERSION
+info "tqmi-connect:" $VERSION
+info "qmicli version: $(qmicli --version)"
 
 if [[ ! -z $_release ]]; then
     release
