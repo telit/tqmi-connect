@@ -426,7 +426,18 @@ wds_stop_network() {
     local cid=${CID:-$_cid}
     local handle=${HANDLE:-$_handle}
     info "Stop network"
-    exe "qmicli -p -d $_device --wds-stop-network=$handle --client-cid=$cid --client-no-release-cid"
+    cmd="qmicli -p -d $_device --wds-stop-network=$handle --client-cid=$cid --client-no-release-cid"
+    echo "[>] $cmd"
+    output=`$cmd 2>&1`
+    local errcode=$?
+    echo "$output"
+    if [[ $(echo "$output" | grep "NoEffect" | wc -l) == "1" ]]; then
+        info "ignoring NoEffect error"
+    else if [[ $errcode != 0 ]]; then
+        err "errorcode $errcode"
+        exit 1
+    fi
+    fi
 }
 
 release() {
