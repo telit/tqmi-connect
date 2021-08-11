@@ -216,8 +216,8 @@ add_qmux() {
         exit 1
     fi
 
-    has_link_management=$(qmicli --help | grep link-management | wc -l)
-    if [[ $has_link_management == "0" ]]; then
+    has_link_add=$(qmicli --help-link-management 2>/dev/null | grep link-add | wc -l)
+    if [[ $has_link_add == "0" ]]; then
         add_qmux_manually $iface $mux_id
     else
         add_qmux_via_qmicli $iface $mux_id
@@ -254,8 +254,10 @@ remove_qmux() {
     local iface=$1
     local qmux_iface=$2
     local mux_id=$3
-    has_link_management=$(qmicli --help | grep link-management | wc -l)
-    if [[ $has_link_management == "0" ]]; then
+
+    info "deleting mux-id $mux_id"
+    has_link_delete=$(qmicli --help-link-management 2>/dev/null | grep "link-delete=" | wc -l)
+    if [[ $has_link_delete == "0" ]]; then
         remove_qmux_manually $iface $mux_id
     else
         remove_qmux_via_qmicli $qmux_iface $mux_id
