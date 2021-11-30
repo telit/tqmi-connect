@@ -321,6 +321,13 @@ nas_get_home_network() {
     fi
 }
 
+nas_get_signal_strength() {
+    info "Checking Signal strength"
+    cmd="qmicli -p -d $_device --nas-get-signal-strength"
+    exe "$cmd"
+
+}
+
 wds_get_client_id() {
     if [[ "$_cid" == 0 ]]; then
         cmd="qmicli $verbose -p -d $_device --wds-noop --client-no-release-cid"
@@ -465,6 +472,7 @@ if [[ ! -z $_connect ]]; then
     configure_iface
     add_qmux $_iface $_muxid
     nas_get_home_network
+    nas_get_signal_strength
     wds_get_client_id
     wds_bind_mux_data_port
     [[ ! -z $_profile ]] && wds_create_profile_id
