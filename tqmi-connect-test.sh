@@ -24,7 +24,7 @@ echo $cmd
 sudo $cmd
 [[ $? != "0" ]] && exit 1
 
-cmd="./tqmi-connect --device $device --connect --apn $APN2 --iface $IFACE --muxid $MUX2 $PROFILE"
+cmd="./tqmi-connect --device $device --connect --apn $APN2 --iface $IFACE --muxid $MUX2 $profile"
 echo $cmd
 sudo $cmd
 [[ $? != "0" ]] && exit 1
