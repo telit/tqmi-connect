@@ -51,9 +51,3 @@ cmd="./tqmi-connect --device $device --release --iface $QMIMUXB"
 echo $cmd
 sudo $cmd
 [[ $? != "0" ]] && exit 1
-
-
-
-
-
-
