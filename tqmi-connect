@@ -12,10 +12,10 @@ VERSION="v2.0.0-0"
 ## examples:
 ##
 ##     Establish a network connection on qmimux with mux-id 1
-##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --apn web.omnitel.it --iface wwan0 --muxid 1
+##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --apn web.omnitel.it --iface wwan0 --muxid 112
 ##
 ##     Establish a network connection creating a 3gpp profile
-##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --profile --apn mobile.vodafone.it --iface wwan0 --muxid 2
+##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --profile --apn mobile.vodafone.it --iface wwan0 --muxid 113
 ##
 ##     Release a network connection
 ##     $ tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0
@@ -26,7 +26,7 @@ VERSION="v2.0.0-0"
 ##    -r, --release
 ##    -a, --apn <string>
 ##    -i, --iface <string>  [default: wwan0]
-##    -m, --muxid <number>  [default: 1]
+##    -m, --muxid <number>, valid numbers 112 and 113 [default: 112]
 ##    -p, --ip_type <number> [default: 4]
 ##    -u, --mtu <number> [default: 16384]
 ##    -t, --table <string> [default: main]
@@ -45,7 +45,7 @@ err() {
 # CLInt GENERATED_CODE: start
 # Default values
 _iface=wwan0
-_muxid=1
+_muxid=112
 _ip_type=4
 _mtu=16384
 _table=main
@@ -140,7 +140,7 @@ catch_exit() {
     # Clean ups
     [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid
     [[ $_stage -ge $STAGE_START_NETWORK ]] && wds_stop_network
-    err "The script failed! Look logs above for more info"
+    err "Connection failed! Look logs above for more info"
     exit 1
 }
 
