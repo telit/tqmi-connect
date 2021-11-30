@@ -289,7 +289,7 @@ dms_get_model() {
         break
     done
     FN980_QUIRK=$(echo "$output" | grep FN980 | wc -l)
-    if [[ $FN980_QUIRK == 1 ]] && [[ $_profile == 0 ]]; then
+    if [[ $FN980_QUIRK == 1 ]]; then
         info "FN980 modem detected, start-network with profile ID"
         _profile=1
     fi
