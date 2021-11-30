@@ -4,8 +4,8 @@
 IFACE=wwan0
 APN1=web.omnitel.it
 APN2=mobile.vodafone.it
-MUX1=1
-MUX2=2
+MUX1=112
+MUX2=113
 PROFILE=0
 
 if [[ $(ls /dev/cdc-wdm* | wc -l) -gt 1 ]]; then
