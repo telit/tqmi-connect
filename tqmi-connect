@@ -130,9 +130,9 @@ _stage=$STAGE_START
 #trap catch_err ERR
 trap catch_exit EXIT
 catch_exit() {
-    info "Cleaning up"
-    # Always remove the newly created profile, but if CID==0 the profile was not created yet.
-    [[ -n $_profile ]] && [[ $_cid != "0" ]] &&wds_delete_profile
+    # We can not delete the profile if we want double connection, so just notify the user
+    # to do it manually in a nice way.
+    [[ -n $_profile ]] && [[ $_cid != "0" ]] &&how_to_delete_profile
 
     # Script ended successfully, nothing to do
     [[ $_stage = $STAGE_END ]] && exit 0
@@ -143,8 +143,6 @@ catch_exit() {
     err "Connection failed! Look logs above for more info"
     exit 1
 }
-
-
 
 [ ! -z $_verbose ] && verbose="--verbose "
 
@@ -402,11 +400,11 @@ save_configuration_to_file() {
     info "ip configuration saved in $OUT"
 }
 
-wds_delete_profile() {
-    info "deleting profile $_profile_id"
+how_to_delete_profile() {
+    info "Delete profile $_profile_id with the following command:"
     cmd="qmicli $verbose -p -d "$_device" --wds-delete-profile=3gpp,$_profile_id --client-no-release-cid --client-cid=$_cid"
-    exe "$cmd"
-    # unset profile_id to prevent future attempts to delete it again
+    info "$cmd"
+    # unset profile_id to prevent future attempts to print this message again.
     _profile_id=
 }
 
@@ -462,6 +460,10 @@ release() {
 info "tqmi-connect:" $VERSION
 info "qmicli version: $(qmicli --version)"
 
+if [[ -z $_release ]] && [[ -z $_connect ]]; then
+    err "No command given! Either use --connect or --release"
+fi
+
 if [[ ! -z $_release ]]; then
     release
 fi
@@ -488,4 +490,5 @@ if [[ ! -z $_connect ]]; then
     info "bring it up (e.g. ip link set $_qmimux up)"
     info "################################################################"
 fi
+
 _stage=$STAGE_END
