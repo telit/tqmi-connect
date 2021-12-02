@@ -1,0 +1,16 @@
+v2.0.1-0
+
+- bug: delete wds profile prevent a second connection
+- bug: fix FN980 modem detection
+- Get signal strength in logs
+- Use new valid qmux id 112 and 113 (0x70, 0x71)
+- Add tqmi-connect-test script
+
+v2.0.0-0
+
+- Ignore wds_stop_network "NoEffect" error
+- Rework to integrate new libqmi link-management
+
+v1.0.0-0
+
+- Initial version
