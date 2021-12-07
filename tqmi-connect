@@ -17,7 +17,7 @@ VERSION="v2.0.1-0"
 ##     Establish a network connection creating a 3gpp profile
 ##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --profile --apn mobile.vodafone.it --iface wwan0 --muxid 113
 ##
-##     Release a network connection
+##     Release a network connection. IMPORTANT NOTE: iface is not wwanX, but qmimuxX
 ##     $ tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0
 ##
 ## options:
