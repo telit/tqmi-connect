@@ -126,21 +126,17 @@ STAGE_QMIMUX=2  # after qmimux, before start network
 STAGE_START_NETWORK=3   # after start network
 STAGE_END=4     # successful end
 _stage=$STAGE_START
-#trap catch_interrupt INT
-#trap catch_err ERR
 trap catch_exit EXIT
 catch_exit() {
-    # We can not delete the profile if we want double connection, so just notify the user
-    # to do it manually in a nice way.
-    [[ -n $_profile ]] && [[ $_cid != "0" ]] &&how_to_delete_profile
-
     # Script ended successfully, nothing to do
     [[ $_stage = $STAGE_END ]] && exit 0
 
     # Clean ups
-    [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid
+    err "script interrupted! Cleaning up..."
+    sleep 1
     [[ $_stage -ge $STAGE_START_NETWORK ]] && wds_stop_network
-    err "Connection failed! Look logs above for more info"
+    [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid
+    [[ -n $_profile ]] && [[ $_cid != "0" ]] &&wds_delete_profile
     exit 1
 }
 
@@ -387,6 +383,7 @@ save_configuration_to_file() {
 
     echo "HANDLE=$_handle"      >> $OUT
     echo "CID=$_cid"            >> $OUT
+    echo "PROFILE=$_profile_id" >> $OUT
     echo "IFACE=$_iface"        >> $OUT
     echo "QMUX_IFACE=$_qmimux"  >> $OUT
     echo "MUX_ID=$_muxid"       >> $OUT
@@ -400,10 +397,12 @@ save_configuration_to_file() {
     info "ip configuration saved in $OUT"
 }
 
-how_to_delete_profile() {
-    info "Delete profile $_profile_id with the following command:"
-    cmd="qmicli $verbose -p -d "$_device" --wds-delete-profile=3gpp,$_profile_id --client-no-release-cid --client-cid=$_cid"
-    info "$cmd"
+wds_delete_profile() {
+    local cid=${CID:-$_cid}
+    local profile_id=${PROFILE:-$_profile_id}
+    info "deleting profile $profile_id"
+    cmd="qmicli $verbose -p -d "$_device" --wds-delete-profile=3gpp,$profile_id --client-no-release-cid --client-cid=$cid"
+    exe "$cmd"
     # unset profile_id to prevent future attempts to print this message again.
     _profile_id=
 }
@@ -447,12 +446,18 @@ wds_stop_network() {
 
 release() {
     configuration="ip-session-$_iface"
+    if [[ ! -f  $configuration ]]; then
+        err "could not find configuration file $configuration"
+        err "Check if the --iface flag is configured correctly (e.g. qmimux0, not wwan0)"
+        exit 1
+    fi
     source $configuration
     wds_stop_network
     info "set $IFACE down"
     exe "ip link set $IFACE down"
     info "Unlink $QMUX_IFACE"
     remove_qmux $IFACE $QMUX_IFACE $MUX_ID
+    wds_delete_profile
     info "Deleting '$configuration' configuration file."
     exe "rm $configuration"
 }
