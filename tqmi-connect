@@ -458,7 +458,7 @@ release() {
 }
 
 info "tqmi-connect:" $VERSION
-info "qmicli version: $(qmicli --version)"
+info "$(qmicli --version | grep 'qmicli')"
 
 if [[ -z $_release ]] && [[ -z $_connect ]]; then
     err "No command given! Either use --connect or --release"
