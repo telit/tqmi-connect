@@ -136,8 +136,9 @@ catch_exit() {
     sleep 1
     [[ $_stage -ge $STAGE_START_NETWORK ]] && wds_stop_network
     [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid
-    [[ -n $_profile ]] && [[ $_cid != "0" ]] &&wds_delete_profile
-    exit 1
+    if [[ ! -z $_profile ]] || [[ ! -z $PROFILE ]]; then
+        wds_delete_profile
+    fi
 }
 
 [ ! -z $_verbose ] && verbose="--verbose "
@@ -451,12 +452,15 @@ release() {
         exit 1
     fi
     source $configuration
+
     wds_stop_network
     info "set $IFACE down"
     exe "ip link set $IFACE down"
     info "Unlink $QMUX_IFACE"
     remove_qmux $IFACE $QMUX_IFACE $MUX_ID
-    wds_delete_profile
+    if [[ -n $PROFILE ]]; then
+        wds_delete_profile
+    fi
     info "Deleting '$configuration' configuration file."
     exe "rm $configuration"
 }
