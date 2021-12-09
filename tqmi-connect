@@ -398,10 +398,9 @@ save_configuration_to_file() {
 }
 
 wds_delete_profile() {
-    local cid=${CID:-$_cid}
     local profile_id=${PROFILE:-$_profile_id}
     info "deleting profile $profile_id"
-    cmd="qmicli $verbose -p -d "$_device" --wds-delete-profile=3gpp,$profile_id --client-no-release-cid --client-cid=$cid"
+    cmd="qmicli $verbose -p -d "$_device" --wds-delete-profile=3gpp,$profile_id"
     exe "$cmd"
     # unset profile_id to prevent future attempts to print this message again.
     _profile_id=
