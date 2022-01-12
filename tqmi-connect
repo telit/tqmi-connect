@@ -140,6 +140,8 @@ catch_exit() {
     [[ $_stage -ge $STAGE_START_NETWORK ]] && wds_stop_network
     [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid $_pcie
     wds_delete_profile
+    # release client
+    qmicli -p -d $_device --wds-noop 2>/dev/null
 }
 
 [ ! -z $_verbose ] && verbose="--verbose "
