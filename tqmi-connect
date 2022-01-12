@@ -101,6 +101,9 @@ while getopts 'hcrvxd:a:i:m:p:u:t:' OPT; do
 done
 # CLInt GENERATED_CODE: end
 
+# disable PCIe quirk flag by default
+_pcie=0
+
 if [[ $EUID != 0 ]]; then
     err "run as root"
     exit 1
@@ -159,6 +162,38 @@ exe() {
     [[ -n "$output" ]] && echo "[<] $output"
     [[ $errcode != "0" ]] && exit 1
     return $errcode
+}
+
+fn980_quirk() {
+    cmd="qmicli -p -d $_device --dms-get-model"
+    set +e
+    while true; do
+        exe "$cmd"
+        check=$(echo "$output" | grep "Device model retrieved" | wc -l)
+        if [[ $check == 0 ]]; then
+            echo -n "."
+            sleep 1
+            continue
+        fi
+        break
+    done
+    FN980_QUIRK=$(echo "$output" | grep FN980 | wc -l)
+    if [[ $FN980_QUIRK == 1 ]]; then
+        info "FN980 modem detected, start-network with profile ID"
+        _profile=1
+    fi
+}
+
+pcie_quirk() {
+    if [[ $_device =~ wwan0qmi0 ]]; then
+        info "PCIe modem detected"
+        let _pcie=1
+    fi
+}
+
+identify_quirks() {
+    fn980_quirk
+    pcie_quirk
 }
 
 add_qmux_manually() {
@@ -477,7 +512,7 @@ if [[ ! -z $_release ]]; then
 fi
 
 if [[ ! -z $_connect ]]; then
-    dms_get_model
+    identify_quirks
     dms_get_software_version
     configure_iface
     add_qmux $_iface $_muxid
