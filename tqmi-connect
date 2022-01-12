@@ -138,7 +138,7 @@ catch_exit() {
     err "script interrupted! Cleaning up..."
     sleep 1
     [[ $_stage -ge $STAGE_START_NETWORK ]] && wds_stop_network
-    [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid
+    [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid $_pcie
     if [[ ! -z $_profile ]] || [[ ! -z $PROFILE ]]; then
         wds_delete_profile
     fi
@@ -237,27 +237,48 @@ add_qmux() {
     local mux_id=$2
 
     info "Creating qmux with id $mux_id"
-    curr_mux_id=$(cat /sys/class/net/$_iface/qmi/add_mux | grep $mux_id | wc -l)
-    if [[ $curr_mux_id != "0" ]]; then
-        # We can not get the qmimux associated with a given mux-id, so we exit
-        # with an error message if the required mux-id is already in use
-        err "mux-id 0x$_muxid is already in use."
-        err "Please, select a different mux-id, or remove them all before trying again."
-        exit 1
-    fi
+    if [[ $_pcie -eq 1 ]]; then
+        exe "ip link add link $_iface type rmnet mux_id $_muxid"
 
-    has_link_add=$(qmicli --help-link-management 2>/dev/null | grep link-add | wc -l)
-    if [[ $has_link_add == "0" ]]; then
-        add_qmux_manually $iface $mux_id
+        # Retrieving the name of the just created rmnet.
+        counter=`ip link show | grep rmnet | wc -l`
+        if [[ $counter -eq 0 ]]; then
+            err "could not find any rmnet interface"
+            exit 1
+        fi
+        if [[ $counter -eq 1 ]]; then
+            # expected line is
+            # n: rmnet0@mhi_iphw0...
+            _qmimux=`ip link show| grep rmnet0 | cut -d' ' -f2 | cut -d'@' -f1`
+        fi
+        if [[ $counter -eq 2 ]]; then
+            # expected line is
+            # n: rmnet1@mhi_iphw0...
+            _qmimux=`ip link show| grep rmnet1 | cut -d' ' -f2 | cut -d'@' -f1`
+        fi
     else
-        add_qmux_via_qmicli $iface $mux_id
-    fi
-    if [[ -z $_qmimux ]]; then
-        err "Could not create qmimux"
-        exit 1
+        curr_mux_id=$(cat /sys/class/net/$_iface/qmi/add_mux | grep $mux_id | wc -l)
+        if [[ $curr_mux_id != "0" ]]; then
+            # We can not get the qmimux associated with a given mux-id, so we exit
+            # with an error message if the required mux-id is already in use
+            err "mux-id 0x$_muxid is already in use."
+            err "Please, select a different mux-id, or remove them all before trying again."
+            exit 1
+        fi
+
+        has_link_add=$(qmicli --help-link-management 2>/dev/null | grep link-add | wc -l)
+        if [[ $has_link_add == "0" ]]; then
+            add_qmux_manually $iface $mux_id
+        else
+            add_qmux_via_qmicli $iface $mux_id
+        fi
+        if [[ -z $_qmimux ]]; then
+            err "Could not create qmimux"
+            exit 1
+        fi
     fi
 
-    info "$_qmimux created"
+    info "created interface \"$_qmimux\""
     _stage=$STAGE_QMIMUX
 }
 
@@ -284,49 +305,40 @@ remove_qmux() {
     local iface=$1
     local qmux_iface=$2
     local mux_id=$3
+    local pcie=$4
 
-    info "deleting mux-id $mux_id"
-    has_link_delete=$(qmicli --help-link-management 2>/dev/null | grep "link-delete=" | wc -l)
-    if [[ $has_link_delete == "0" ]]; then
-        remove_qmux_manually $iface $mux_id
+    info "deleting rmnet with mux-id $mux_id"
+
+    if [[ $pcie -eq 1 ]]; then
+        exe "ip link del $qmux_iface"
     else
-        remove_qmux_via_qmicli $qmux_iface $mux_id
+        has_link_delete=$(qmicli --help-link-management 2>/dev/null | grep "link-delete=" | wc -l)
+        if [[ $has_link_delete == "0" ]]; then
+            remove_qmux_manually $iface $mux_id
+        else
+            remove_qmux_via_qmicli $qmux_iface $mux_id
+        fi
     fi
 }
 
 configure_iface() {
     info "configure parent network interface"
+    exe "ip addr flush $_iface"
     exe "ip link set $_iface down"
-    exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=802-3"
+
+    if [[ $_pcie -eq 0 ]]; then
+        exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=802-3"
+    fi
 
     info "Setting data format..."
-    exe "qmicli -p -d $_device --set-expected-data-format=raw-ip"
+    if [[ $_pcie -eq 0 ]]; then
+        exe "qmicli -p -d $_device --set-expected-data-format=raw-ip"
+    fi
     exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap,dl-max-datagrams=32,dl-datagram-max-size=$_mtu"
 }
 
-dms_get_model() {
-    info "Getting modem model..."
-    cmd="qmicli -p -d $_device --dms-get-model"
-    set +e
-    while true; do
-        exe "$cmd"
-        check=$(echo "$output" | grep "Device model retrieved" | wc -l)
-        if [[ $check == 0 ]]; then
-            echo -n "."
-            sleep 1
-            continue
-        fi
-        break
-    done
-    FN980_QUIRK=$(echo "$output" | grep FN980 | wc -l)
-    if [[ $FN980_QUIRK == 1 ]]; then
-        info "FN980 modem detected, start-network with profile ID"
-        _profile=1
-    fi
-}
-
 dms_get_software_version() {
-info "Getting software version..."
+    info "Getting software version..."
     cmd="qmicli -p -d $_device --dms-get-software-version"
     while true; do
         exe "$cmd"
@@ -367,8 +379,15 @@ wds_get_client_id() {
 }
 
 wds_bind_mux_data_port() {
+    local ep_type="hsusb"
+    local ep_iface_number=2
+    if [[ $_pcie -eq 1 ]]; then
+        ep_type="pcie"
+        ep_iface_number=4
+    fi
+
     info "Binding mux data port \"$_muxid\""
-    exe "qmicli -p -d $_device --wds-bind-mux-data-port=mux-id=${_muxid},ep-iface-number=2 --client-no-release-cid --client-cid=$_cid"
+    exe "qmicli -p -d $_device --wds-bind-mux-data-port=mux-id=${_muxid},ep-iface-number=${ep_iface_number},ep-type=${ep_type} --client-no-release-cid --client-cid=$_cid"
 }
 
 wds_create_profile_id() {
@@ -423,6 +442,7 @@ save_configuration_to_file() {
     echo "IFACE=$_iface"        >> $OUT
     echo "QMUX_IFACE=$_qmimux"  >> $OUT
     echo "MUX_ID=$_muxid"       >> $OUT
+    echo "PCIe=$_pcie"          >> $OUT
     echo "IP=$ip"               >> $OUT
     echo "GW=$gw"               >> $OUT
     echo "NETMASK=$netmask"     >> $OUT
@@ -483,7 +503,7 @@ release() {
     configuration="ip-session-$_iface"
     if [[ ! -f  $configuration ]]; then
         err "could not find configuration file $configuration"
-        err "Check if the --iface flag is configured correctly (e.g. qmimux0, not wwan0)"
+        err "Check if the --iface flag is configured correctly (e.g. qmimux0/rmnet0, not wwan0)"
         exit 1
     fi
     source $configuration
@@ -491,8 +511,7 @@ release() {
     wds_stop_network
     info "set $IFACE down"
     exe "ip link set $IFACE down"
-    info "Unlink $QMUX_IFACE"
-    remove_qmux $IFACE $QMUX_IFACE $MUX_ID
+    remove_qmux $IFACE $QMUX_IFACE $MUX_ID $PCIe
     if [[ -n $PROFILE ]]; then
         wds_delete_profile
     fi
