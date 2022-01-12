@@ -139,9 +139,7 @@ catch_exit() {
     sleep 1
     [[ $_stage -ge $STAGE_START_NETWORK ]] && wds_stop_network
     [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid $_pcie
-    if [[ ! -z $_profile ]] || [[ ! -z $PROFILE ]]; then
-        wds_delete_profile
-    fi
+    wds_delete_profile
 }
 
 [ ! -z $_verbose ] && verbose="--verbose "
@@ -455,6 +453,10 @@ save_configuration_to_file() {
 
 wds_delete_profile() {
     local profile_id=${PROFILE:-$_profile_id}
+    if [[ -z $profile_id ]]; then
+        # No profile id found, nothing to do
+        return
+    fi
     info "deleting profile $profile_id"
     cmd="qmicli $verbose -p -d "$_device" --wds-delete-profile=3gpp,$profile_id"
     exe "$cmd"
@@ -512,9 +514,7 @@ release() {
     info "set $IFACE down"
     exe "ip link set $IFACE down"
     remove_qmux $IFACE $QMUX_IFACE $MUX_ID $PCIe
-    if [[ -n $PROFILE ]]; then
-        wds_delete_profile
-    fi
+    wds_delete_profile
     info "Deleting '$configuration' configuration file."
     exe "rm $configuration"
 }
