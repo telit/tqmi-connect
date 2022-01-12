@@ -29,7 +29,6 @@ VERSION="v2.0.1-0"
 ##    -m, --muxid <number>, valid numbers 112 and 113 [default: 112]
 ##    -p, --ip_type <number> [default: 4]
 ##    -u, --mtu <number> [default: 16384]
-##    -t, --table <string> [default: main]
 ##    -v, --verbose
 ##    -x, --profile
 
@@ -48,7 +47,6 @@ _iface=wwan0
 _muxid=112
 _ip_type=4
 _mtu=16384
-_table=main
 
 # No-arguments is not allowed
 [ $# -eq 0 ] && sed -ne 's/^## \(.*\)/\1/p' $0 && exit 1
@@ -77,7 +75,7 @@ function print_illegal() {
 }
 
 # Parsing flags and arguments
-while getopts 'hcrvxd:a:i:m:p:u:t:' OPT; do
+while getopts 'hcrvxd:a:i:m:p:u:' OPT; do
     case $OPT in
         h) sed -ne 's/^## \(.*\)/\1/p' $0
            exit 1 ;;
@@ -91,7 +89,6 @@ while getopts 'hcrvxd:a:i:m:p:u:t:' OPT; do
         m) _muxid=$OPTARG ;;
         p) _ip_type=$OPTARG ;;
         u) _mtu=$OPTARG ;;
-        t) _table=$OPTARG ;;
         \?) print_illegal $@ >&2;
             echo "---"
             sed -ne 's/^## \(.*\)/\1/p' $0
@@ -156,10 +153,14 @@ mask2cdr () {
 
 exe() {
     cmd="$1"
-    echo "[>] $cmd"
+    echo ""
+    echo "    $cmd"
     output=`$cmd`
     local errcode=$?
-    [[ -n "$output" ]] && echo "[<] $output"
+    if [[ -n "$output" ]]; then
+        echo "    $output"
+    fi
+    echo ""
     [[ $errcode != "0" ]] && exit 1
     return $errcode
 }
@@ -217,9 +218,9 @@ add_qmux_via_qmicli() {
     local iface=$1
     local mux_id=$2
     cmd="qmicli -p -d $_device --link-add=iface=$iface,mux-id=$mux_id"
-    echo "[>] $cmd"
+    echo "    $cmd"
     output=`$cmd`
-    echo "$output"
+    echo "    $output"
     if [[ $(echo "$output" | grep successfully | wc -l) == "0" ]]; then
         err "could not add qmux"
         exit 1
@@ -399,6 +400,7 @@ wds_create_profile_id() {
             _pdp_type="IPV4V6"
         fi
     fi
+    info "Creating profile"
     cmd="qmicli $verbose -p -d "$_device" --wds-create-profile=3gpp,apn=$_apn,pdp-type=$_pdp_type --client-no-release-cid --client-cid=$_cid"
     exe "$cmd"
     _profile_id=$(echo "$output" | sed -n "s_\s*Profile index: '\([0-9]*\)'_\1_p")
@@ -449,7 +451,6 @@ save_configuration_to_file() {
     echo "DNS1=$dns1"           >> $OUT
     echo "DNS2=$dns2"           >> $OUT
     echo "CDR=$network"         >> $OUT
-    echo "TABLE=$_table"        >> $OUT
     info "ip configuration saved in $OUT"
 }
 
@@ -490,9 +491,9 @@ wds_stop_network() {
     local handle=${HANDLE:-$_handle}
     info "Stop network"
     cmd="qmicli -p -d $_device --wds-stop-network=$handle --client-cid=$cid"
-    echo "[>] $cmd"
+    echo "    $cmd"
     output=`$cmd 2>&1`
-    echo "$output"
+    echo "   $output"
 }
 
 release() {
@@ -513,6 +514,8 @@ release() {
     exe "rm $configuration"
 }
 
+
+### MAIN ###
 info "tqmi-connect:" $VERSION
 info "$(qmicli --version | grep 'qmicli')"
 
