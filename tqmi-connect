@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-VERSION="v2.0.1-0"
+VERSION="v2.1.0-0"
 
 ## Helper script to establish a QMUX connection. Once the connection is established
 ## a file named "ip-session-qmimuxX" is created with several information like:
@@ -8,17 +8,6 @@ VERSION="v2.0.1-0"
 ##   - HANDLE and CID to close the connection
 ##
 ## usage: tqmi-connect [options]
-##
-## examples:
-##
-##     Establish a network connection on qmimux with mux-id 1
-##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --apn web.omnitel.it --iface wwan0 --muxid 112
-##
-##     Establish a network connection creating a 3gpp profile
-##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --profile --apn mobile.vodafone.it --iface wwan0 --muxid 113
-##
-##     Release a network connection. IMPORTANT NOTE: iface is not wwanX, but qmimuxX
-##     $ tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0
 ##
 ## options:
 ##    -d, --device <path>
@@ -31,6 +20,25 @@ VERSION="v2.0.1-0"
 ##    -u, --mtu <number> [default: 16384]
 ##    -v, --verbose
 ##    -x, --profile
+##
+## Examples for USB connection:
+##
+##   Establish a network connection on qmimux with mux-id 112
+##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --apn web.omnitel.it --iface wwan0 --muxid 112
+##
+##   Establish a network connection creating a 3gpp profile
+##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --profile --apn mobile.vodafone.it --iface wwan0 --muxid 113
+##
+##   Release a network connection. IMPORTANT NOTE: iface is not wwanX, but qmimuX
+##     $ tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0
+##
+## Examples for PCIe connection:
+##
+##   Establish a network connection on rmnet0 with mux-id 112
+##     $ tqmi-connect -d /dev/wwan0qmi0 --connect --apn web.omnitel.it --iface mhi_hwip0 --muxid 112
+##
+##   Release a network connection. IMPORTANT NOTE: --iface is not mhi_hwip0, but rmnetX
+##     $ tqmi-connect -d /dev/wwan0qmi0 --release --iface rmnet0
 
 info() {
     echo "[+] $@"
