@@ -2,12 +2,14 @@
 # -*- coding: UTF-8 -*-
 
 IFACE=wwan0
-APN1=web.omnitel.it
-APN2=mobile.vodafone.it
 MUX1=112
 MUX2=113
-PROFILE=0
 
+# Change APNs according to your provider.
+APN1=web.omnitel.it
+APN2=mobile.vodafone.it
+
+PROFILE=0
 if [[ $(ls /dev/cdc-wdm* | wc -l) -gt 1 ]]; then
     echo [!] Automatic tests require only 1 modem connected
     exit 1
