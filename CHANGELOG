@@ -1,3 +1,8 @@
+v2.1.0-0
+
+- Support PCIe modems
+- Bug fixing
+
 v2.0.1-0
 
 - bug: delete wds profile prevent a second connection
