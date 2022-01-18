@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # -*- coding: UTF-8 -*-
+set -e
 
 IFACE=wwan0
 MUX1=112
@@ -24,12 +25,10 @@ fi
 cmd="./tqmi-connect --device $device --connect --apn $APN1 --iface $IFACE --muxid $MUX1 $profile"
 echo $cmd
 sudo $cmd
-[[ $? != "0" ]] && exit 1
 
 cmd="./tqmi-connect --device $device --connect --apn $APN2 --iface $IFACE --muxid $MUX2 $profile"
 echo $cmd
 sudo $cmd
-[[ $? != "0" ]] && exit 1
 
 QMIMUXA=$(grep QMUX_IFACE ip-session-qmimux0 | cut -d'=' -f2)
 QMIMUXB=$(grep QMUX_IFACE ip-session-qmimux1 | cut -d'=' -f2)

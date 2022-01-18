@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # -*- coding: UTF-8 -*-
+set -e
 
 IFACE=mhi_hwip0
 # This is the device name in kernel v5.15, but it might change in other
@@ -21,12 +22,10 @@ fi
 cmd="./tqmi-connect --device $DEVICE --connect --apn $APN1 --iface $IFACE --muxid $MUX1 $profile"
 echo $cmd
 sudo $cmd
-[[ $? != "0" ]] && exit 1
 
 cmd="./tqmi-connect --device $DEVICE --connect --apn $APN2 --iface $IFACE --muxid $MUX2 $profile"
 echo $cmd
 sudo $cmd
-[[ $? != "0" ]] && exit 1
 
 QMIMUXA=$(grep QMUX_IFACE ip-session-rmnet0 | cut -d'=' -f2)
 QMIMUXB=$(grep QMUX_IFACE ip-session-rmnet1 | cut -d'=' -f2)
