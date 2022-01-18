@@ -194,7 +194,7 @@ fn980_quirk() {
 }
 
 pcie_quirk() {
-    if [[ $_device =~ wwan0qmi0 ]]; then
+    if [[ $_device =~ wwan ]]; then
         info "PCIe modem detected"
         let _pcie=1
     fi
