@@ -160,7 +160,14 @@ mask2cdr () {
 }
 
 exe() {
+    # command to execute
     cmd="$1"
+    # time to wait after the command has been executed.
+    # The 0.5 seconds interval has been experimentally shown effective
+    # to smooth the execution of the script. Only wds-start-network requires
+    # a longer time of 1s.
+    sleep_time=${$2:-0.5}
+
     echo ""
     echo "    $cmd"
     output=`$cmd`
@@ -170,6 +177,7 @@ exe() {
     fi
     echo ""
     [[ $errcode != "0" ]] && exit 1
+    [[ $sleep_time ]] && sleep $sleep_time
     return $errcode
 }
 
@@ -415,10 +423,11 @@ wds_create_profile_id() {
 }
 
 wds_start_network() {
+    local sleep_seconds=1
     if [[ -z "$_profile" ]]; then
-        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=apn=$_apn,ip-type=$_ip_type --client-no-release-cid --client-cid=$_cid"
+        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=apn=$_apn,ip-type=$_ip_type --client-no-release-cid --client-cid=$_cid" $sleep_seconds
     else
-        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=3gpp-profile=$_profile_id --client-no-release-cid --client-cid=$_cid"
+        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=3gpp-profile=$_profile_id --client-no-release-cid --client-cid=$_cid" $sleep_seconds
     fi
     exe "$cmd"
     check=$(echo "$output" | grep "Network started" | wc -l)
