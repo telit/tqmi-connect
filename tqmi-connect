@@ -331,18 +331,18 @@ remove_qmux() {
 }
 
 configure_iface() {
-    info "configure parent network interface"
+    info "Configuring parent network interface..."
     exe "ip addr flush $_iface"
     exe "ip link set $_iface down"
 
     if [[ $_pcie -eq 0 ]]; then
-        exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=802-3"
+        info "Setting MTU $_mtu..."
+        exe "qmicli -p -d $_device --set-expected-data-format=802-3"
+        exe "ip link set $_iface mtu $_mtu"
+        exe "qmicli -p -d $_device --set-expected-data-format=raw-ip"
     fi
 
     info "Setting data format..."
-    if [[ $_pcie -eq 0 ]]; then
-        exe "qmicli -p -d $_device --set-expected-data-format=raw-ip"
-    fi
     exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap,dl-max-datagrams=32,dl-datagram-max-size=$_mtu"
 }
 
