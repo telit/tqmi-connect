@@ -166,7 +166,7 @@ exe() {
     # The 0.5 seconds interval has been experimentally shown effective
     # to smooth the execution of the script. Only wds-start-network requires
     # a longer time of 1s.
-    sleep_time=${$2:-0.5}
+    sleep_time=${2:-0.5}
 
     echo ""
     echo "    $cmd"
@@ -425,11 +425,11 @@ wds_create_profile_id() {
 wds_start_network() {
     local sleep_seconds=1
     if [[ -z "$_profile" ]]; then
-        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=apn=$_apn,ip-type=$_ip_type --client-no-release-cid --client-cid=$_cid" $sleep_seconds
+        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=apn=$_apn,ip-type=$_ip_type --client-no-release-cid --client-cid=$_cid"
     else
-        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=3gpp-profile=$_profile_id --client-no-release-cid --client-cid=$_cid" $sleep_seconds
+        cmd="qmicli $verbose -p -d "$_device" --wds-start-network=3gpp-profile=$_profile_id --client-no-release-cid --client-cid=$_cid"
     fi
-    exe "$cmd"
+    exe "$cmd" "$sleep_seconds"
     check=$(echo "$output" | grep "Network started" | wc -l)
     if [[ $check == 0 ]]; then
         err "start network failed"
