@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-VERSION="v2.1.0-0"
+VERSION="v2.1.1-0"
 
 ## Helper script to establish a QMUX connection. Once the connection is established
 ## a file named "ip-session-qmimuxX" is created with several information like:
