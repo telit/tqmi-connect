@@ -56,6 +56,9 @@ _muxid=112
 _ip_type=4
 _mtu=16384
 
+# Global variable for saving the MTU for the qmimux interface
+qmimux_mtu=
+
 # No-arguments is not allowed
 [ $# -eq 0 ] && sed -ne 's/^## \(.*\)/\1/p' $0 && exit 1
 
@@ -451,6 +454,7 @@ save_configuration_to_file() {
 
     dns1=$(echo "$output" | sed -n "s/IPv4 primary DNS: \([0-9\./]*\)/\1/p" $FILE | sed -n "s/\s*//p")
     dns2=$(echo "$output" | sed -n "s/IPv4 secondary DNS: \([0-9\./]*\)/\1/p" $FILE | sed -n "s/\s*//p")
+    qmimux_mtu=$(echo "$output" | sed -nr "s/\s*MTU: ([0-9]+)/\1/p")
 
     OUT=ip-session-$_qmimux
     [[ -f "$OUT" ]] && rm "$OUT"
@@ -467,8 +471,16 @@ save_configuration_to_file() {
     echo "NETMASK=$netmask"     >> $OUT
     echo "DNS1=$dns1"           >> $OUT
     echo "DNS2=$dns2"           >> $OUT
+    echo "MTU=$qmimux_mtu"      >> "$OUT"
     echo "CDR=$network"         >> $OUT
     info "ip configuration saved in $OUT"
+}
+
+set_mtu() {
+    info "Settting MTU"
+    mtu=$1
+    cmd="ip link set $_qmimux mtu $mtu"
+    exe "$cmd"
 }
 
 wds_delete_profile() {
@@ -557,6 +569,7 @@ if [[ ! -z $_connect ]]; then
     wds_start_network
     check_connection_status
     save_configuration_to_file
+    set_mtu "$qmimux_mtu"
     set_network_address
 
     info "################################################################"
