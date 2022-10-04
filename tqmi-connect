@@ -346,15 +346,16 @@ configure_iface() {
     exe "ip addr flush $_iface"
     exe "ip link set $_iface down"
 
-    if [[ $_pcie -eq 0 ]]; then
-        info "Setting MTU $_mtu..."
-        exe "qmicli -p -d $_device --set-expected-data-format=802-3"
-        exe "ip link set $_iface mtu $_mtu"
-        exe "qmicli -p -d $_device --set-expected-data-format=raw-ip"
-    fi
-
     info "Setting data format..."
     exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap,dl-max-datagrams=32,dl-datagram-max-size=$_mtu"
+    mtu=$(echo "$output" | sed -nr "s/Downlink data aggregation max size: '([0-9]+)'/\1/p")
+
+    if [[ $_pcie -eq 0 ]]; then
+        info "Setting MTU $mtu..."
+        exe "qmicli -p -d $_device --set-expected-data-format=802-3"
+        exe "ip link set $_iface mtu $mtu"
+        exe "qmicli -p -d $_device --set-expected-data-format=raw-ip"
+    fi
 }
 
 dms_get_software_version() {
