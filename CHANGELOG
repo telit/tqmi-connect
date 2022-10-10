@@ -1,3 +1,11 @@
+v2.1.3-0
+
+- Use license SPDX GPL-2.0-only
+- Fix some warnings of the shellcheck tool
+- Add README.md
+- tqmi-connect: use dl aggregated max size returned by the modem as MTU
+- tqmi-connect: Set automatically the MTU of the qmimux interface
+
 v2.1.2-0
 
 - Fix bash substitution issues
