@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: GPL-2.0-only
+
 VERSION="v2.1.2-0"
 
 ## Helper script to establish a QMUX connection. Once the connection is established
