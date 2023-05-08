@@ -8,6 +8,10 @@ Default values used:
 At the end the script check if the device is connected and if not it terminates
 with a non zero exit value.
 
+## Requirements
+
+The version of the qmicli tool must be at least 1.28.0.
+
 ## Configure the parent network interface
 
 Flush and shutdown the interface:

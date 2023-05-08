@@ -50,6 +50,22 @@ err() {
     echo "[!] $@"
 }
 
+check_requirements() {
+  qmicli_version=$(qmicli --version | head -1 | cut -d' ' -f2)
+
+  major=$(echo "$qmicli_version" | cut -d. -f1)
+  if (( major > 1 )); then
+    return
+  fi
+
+  minor=$(echo "$qmicli_version" | cut -d. -f2)
+  if (( minor < 28 )); then
+    echo "error: the qmicli version must be at least 1.28.0!"
+    exit 1
+  fi
+}
+
+check_requirements
 
 # CLInt GENERATED_CODE: start
 # Default values
