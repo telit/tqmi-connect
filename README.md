@@ -30,7 +30,7 @@ Set the MTU and the correct data format in the host parent netdevice:
     # ip link set wwx2e6427c0dfaf mtu $MTU
     # qmicli -p -d /dev/cdc-wdm0 --set-expected-data-format=raw-ip
 
-Create a qmux netdevice:
+Create a qmimux netdevice:
 
     # qmicli -p -d /dev/cdc-wdm0 --link-add=iface=wwan0,mux-id=112
 
@@ -107,7 +107,7 @@ Shutdown the network interface:
 
     # ip link set wwan0 down
 
-Delete the qmux netdevice:
+Delete the qmimux netdevice:
 
     # qmicli -p -d /dev/cdc-wdm0 --link-delete=link-iface=qmimux0,mux-id=112
 

@@ -3,8 +3,8 @@
 
 VERSION="v2.1.3-0"
 
-## Helper script to establish a QMUX connection. Once the connection is established
-## a file named "ip-session-qmimuxX" is created with several information like:
+## Helper script to establish a QMAP connection using qmi_wwan inbox capabilities. Once the connection is
+## established a file named "ip-session-qmimuxX" is created with several information like:
 ##
 ##   - IP, Gateway, DNS to configure the routing
 ##   - HANDLE and CID to close the connection
@@ -148,7 +148,7 @@ catch_exit() {
     err "script interrupted! Cleaning up..."
     sleep 1
     [[ $_stage -ge $STAGE_START_NETWORK ]] && wds_stop_network
-    [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmux $_iface $_qmimux $_muxid $_pcie
+    [[ $_stage -ge $STAGE_QMIMUX ]] && remove_qmimux $_iface $_qmimux $_muxid $_pcie
     wds_delete_profile
     # release client
     qmicli -p -d $_device --wds-noop 2>/dev/null
@@ -218,7 +218,7 @@ identify_quirks() {
     pcie_quirk
 }
 
-add_qmux_manually() {
+add_qmimux_manually() {
     # For qmicli without link-management
     local iface=$1
     local mux_id=$2
@@ -235,7 +235,7 @@ add_qmux_manually() {
     fi
 }
 
-add_qmux_via_qmicli() {
+add_qmimux_via_qmicli() {
     local iface=$1
     local mux_id=$2
     cmd="qmicli -p -d $_device --link-add=iface=$iface,mux-id=$mux_id"
@@ -243,7 +243,7 @@ add_qmux_via_qmicli() {
     output=`$cmd`
     echo "    $output"
     if [[ $(echo "$output" | grep successfully | wc -l) == "0" ]]; then
-        err "could not add qmux"
+        err "could not add qmimux"
         exit 1
     fi
     _qmimux=$(echo "$output" | grep "iface name" | cut -d":" -f2)
@@ -254,11 +254,11 @@ add_qmux_via_qmicli() {
     fi
 }
 
-add_qmux() {
+add_qmimux() {
     local iface=$1
     local mux_id=$2
 
-    info "Creating qmux with id $mux_id"
+    info "Creating qmimux with id $mux_id"
     if [[ $_pcie -eq 1 ]]; then
         exe "ip link add link $_iface type rmnet mux_id $_muxid"
 
@@ -290,9 +290,9 @@ add_qmux() {
 
         has_link_add=$(qmicli --help-link-management 2>/dev/null | grep link-add | wc -l)
         if [[ $has_link_add == "0" ]]; then
-            add_qmux_manually $iface $mux_id
+            add_qmimux_manually $iface $mux_id
         else
-            add_qmux_via_qmicli $iface $mux_id
+            add_qmimux_via_qmicli $iface $mux_id
         fi
         if [[ -z $_qmimux ]]; then
             err "Could not create qmimux"
@@ -304,7 +304,7 @@ add_qmux() {
     _stage=$STAGE_QMIMUX
 }
 
-remove_qmux_manually() {
+remove_qmimux_manually() {
     # Get the mux-id either from the CLI via --muxid or from the ip-session
     # configuration file.
     local iface=$1
@@ -317,28 +317,28 @@ remove_qmux_manually() {
     fi
 }
 
-remove_qmux_via_qmicli() {
-    local qmux_iface=$1
+remove_qmimux_via_qmicli() {
+    local qmimux_iface=$1
     local mux_id=$2
-    exe "qmicli -p -d $_device --link-delete=link-iface=$qmux_iface,mux-id=$mux_id"
+    exe "qmicli -p -d $_device --link-delete=link-iface=$qmimux_iface,mux-id=$mux_id"
 }
 
-remove_qmux() {
+remove_qmimux() {
     local iface=$1
-    local qmux_iface=$2
+    local qmimux_iface=$2
     local mux_id=$3
     local pcie=$4
 
     info "deleting rmnet with mux-id $mux_id"
 
     if [[ $pcie -eq 1 ]]; then
-        exe "ip link del $qmux_iface"
+        exe "ip link del $qmimux_iface"
     else
         has_link_delete=$(qmicli --help-link-management 2>/dev/null | grep "link-delete=" | wc -l)
         if [[ $has_link_delete == "0" ]]; then
-            remove_qmux_manually $iface $mux_id
+            remove_qmimux_manually $iface $mux_id
         else
-            remove_qmux_via_qmicli $qmux_iface $mux_id
+            remove_qmimux_via_qmicli $qmimux_iface $mux_id
         fi
     fi
 }
@@ -467,7 +467,7 @@ save_configuration_to_file() {
         echo "CID=$_cid"
         echo "PROFILE=$_profile_id"
         echo "IFACE=$_iface"
-        echo "QMUX_IFACE=$_qmimux"
+        echo "QMIMUX_IFACE=$_qmimux"
         echo "MUX_ID=$_muxid"
         echo "PCIe=$_pcie"
         echo "IP=$ip"
@@ -542,7 +542,7 @@ release() {
     wds_stop_network
     info "set $IFACE down"
     exe "ip link set $IFACE down"
-    remove_qmux "$IFACE" "$QMUX_IFACE" "$MUX_ID" "$PCIe"
+    remove_qmimux "$IFACE" "$QMIMUX_IFACE" "$MUX_ID" "$PCIe"
     wds_delete_profile
     info "Deleting '$configuration' configuration file."
     exe "rm $configuration"
@@ -565,7 +565,7 @@ if [[ -n $_connect ]]; then
     identify_quirks
     dms_get_software_version
     configure_iface
-    add_qmux "$_iface" "$_muxid"
+    add_qmimux "$_iface" "$_muxid"
     nas_get_home_network
     nas_get_signal_strength
     wds_get_client_id
