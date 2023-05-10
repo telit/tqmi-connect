@@ -295,7 +295,8 @@ add_qmimux() {
             _qmimux=`ip link show| grep rmnet1 | cut -d' ' -f2 | cut -d'@' -f1`
         fi
     else
-        curr_mux_id=$(cat /sys/class/net/$_iface/qmi/add_mux | grep $mux_id | wc -l)
+        hex_mux_id=$(printf "%x" "$mux_id")
+        curr_mux_id=$(cat /sys/class/net/"$_iface"/qmi/add_mux | grep -c 0x"$hex_mux_id")
         if [[ $curr_mux_id != "0" ]]; then
             # We can not get the qmimux associated with a given mux-id, so we exit
             # with an error message if the required mux-id is already in use
