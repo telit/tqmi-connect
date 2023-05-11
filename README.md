@@ -12,7 +12,49 @@ with a non zero exit value.
 
 The version of the qmicli tool must be at least 1.28.0.
 
-## Configure the parent network interface
+## Usage examples
+
+Establish an USB network connection on qmimux with mux-id 112
+
+    # tqmi-connect -d /dev/cdc-wdm0 --connect --apn web.omnitel.it --iface wwan0 --muxid 112
+
+Establish a USB network connection creating a 3gpp profile
+
+    # tqmi-connect -d /dev/cdc-wdm0 --connect --profile --apn mobile.vodafone.it --iface wwan0 --muxid 113
+
+Establish an USB ipv4 and ivpv6 network connection
+
+    # tqmi-connect -d /dev/cdc-wdm0 --connect --apn internet --dual
+
+Release an USB network connection. IMPORTANT NOTE: iface is not wwanX, but qmimuX
+
+    # tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0
+
+Release the ipv6 context in an USB dual network connection
+
+    # tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0 --ip_type 6
+
+Release both ipv4 and ipv6 contexts in an USB dual network connection
+
+    # tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0 --dual
+
+Establish a PCIe network connection on rmnet0 with mux-id 112
+
+    # tqmi-connect -d /dev/wwan0qmi0 --connect --apn web.omnitel.it --iface mhi_hwip0 --muxid 112
+
+Establish a PCIe ipv4 and ivpv6 network connection
+
+    # tqmi-connect -d /dev/wwan0qmi0 --connect --apn internet --dual --iface mhi_hwip0
+
+Release a PCIe network connection. IMPORTANT NOTE: --iface is not mhi_hwip0, but rmnetX
+
+    # tqmi-connect -d /dev/wwan0qmi0 --release --iface rmnet0
+
+Release both ipv4 and ipv6 contexts in an USB dual network connection
+
+    # tqmi-connect -d /dev/wwan0qmi0 --release --iface rmnet0 --dual
+
+## Steps performed to setup a data connection
 
 Flush and shutdown the interface:
 
@@ -51,13 +93,17 @@ Bind mux data port "112":
 
     # qmicli -p -d /dev/cdc-wdm0 --wds-bind-mux-data-port=mux-id=112,ep-iface-number=2,ep-type=hsusb --client-no-release-cid --client-cid=$CID
 
-Create profile (for the APN you should use the correct one, in this example is
+Create profile if requested (for the APN you should use the correct one, in this example is
 web.omnitel.it):
 
     # qmicli  -p -d /dev/cdc-wdm0 --wds-create-profile=3gpp,apn=web.omnitel.it,pdp-type=IP --client-no-release-cid --client-cid=$CID
     ...
     Profile index: '6'
     ...
+
+Set IP family preference:
+
+    # qmicli -p -d /dev/cdc-wdm0 --wds-set-ip-family=4 --client-no-release-cid --client-cid=$CID
 
 In should be noted that the previous command returns a profile id that is used
 in this start network command:
