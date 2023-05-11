@@ -1,3 +1,8 @@
+v2.2.0-0
+
+- Support concurrent ipv4 and ipv6 connections
+- Fix qmimux presence check
+
 v2.1.3-0
 
 - Use license SPDX GPL-2.0-only
