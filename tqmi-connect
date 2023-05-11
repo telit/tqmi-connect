@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-2.0-only
 
-VERSION="v2.1.3-0"
+VERSION="v2.2.0-0"
 
 ## Helper script to establish a QMAP connection using qmi_wwan inbox capabilities. Once the connection is
-## established a file named "ip-session-qmimuxX" is created with several information like:
+## established a file named "ip-session-qmimuxX-$(ip_type)" is created with several information like:
 ##
 ##   - IP, Gateway, DNS to configure the routing
 ##   - HANDLE and CID to close the connection
@@ -22,6 +22,7 @@ VERSION="v2.1.3-0"
 ##    -u, --mtu <number> [default: 16384]
 ##    -v, --verbose
 ##    -x, --profile
+##    -l, --dual (for ipv4 and ipv6 concurrent connections)
 ##
 ## Examples for USB connection:
 ##
@@ -31,8 +32,17 @@ VERSION="v2.1.3-0"
 ##   Establish a network connection creating a 3gpp profile
 ##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --profile --apn mobile.vodafone.it --iface wwan0 --muxid 113
 ##
+##   Establish an ipv4 and ivpv6 network connection
+##     $ tqmi-connect -d /dev/cdc-wdm0 --connect --apn internet --dual
+##
 ##   Release a network connection. IMPORTANT NOTE: iface is not wwanX, but qmimuX
 ##     $ tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0
+##
+##   Release the ipv6 context in a dual network connection
+##     $ tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0 --ip_type 6
+##
+##   Release both ipv4 and ipv6 contexts in a dual network connection
+##     $ tqmi-connect -d /dev/cdc-wdm0 --release --iface qmimux0 --dual
 ##
 ## Examples for PCIe connection:
 ##
@@ -95,6 +105,7 @@ for arg in "$@"; do
 "--table") set -- "$@" "-t";;
 "--verbose") set -- "$@" "-v";;
 "--profile") set -- "$@" "-x";;
+"--dual") set -- "$@" "-l";;
   *) set -- "$@" "$arg"
   esac
 done
@@ -104,7 +115,7 @@ function print_illegal() {
 }
 
 # Parsing flags and arguments
-while getopts 'hcrvxd:a:i:m:p:u:' OPT; do
+while getopts 'hcrvlxd:a:i:m:p:u:' OPT; do
     case $OPT in
         h) sed -ne 's/^## \(.*\)/\1/p' $0
            exit 1 ;;
@@ -112,6 +123,7 @@ while getopts 'hcrvxd:a:i:m:p:u:' OPT; do
         r) _release=1 ;;
         v) _verbose=1 ;;
         x) _profile=1 ;;
+        l) _dual=1 ;;
         d) _device=$OPTARG ;;
         a) _apn=$OPTARG ;;
         i) _iface=$OPTARG ;;
@@ -203,22 +215,24 @@ exe() {
 }
 
 fn980_quirk() {
-    cmd="qmicli -p -d $_device --dms-get-model"
-    set +e
-    while true; do
-        exe "$cmd"
-        check=$(echo "$output" | grep "Device model retrieved" | wc -l)
-        if [[ $check == 0 ]]; then
-            echo -n "."
-            sleep 1
-            continue
+    if [[ -z $_profile ]]; then
+        cmd="qmicli -p -d $_device --dms-get-model"
+        set +e
+        while true; do
+            exe "$cmd"
+            check=$(echo "$output" | grep "Device model retrieved" | wc -l)
+            if [[ $check == 0 ]]; then
+                echo -n "."
+                sleep 1
+                continue
+            fi
+            break
+        done
+        FN980_QUIRK=$(echo "$output" | grep FN980 | wc -l)
+        if [[ $FN980_QUIRK == 1 ]]; then
+            info "FN980 modem detected, start-network with profile ID"
+            _profile=1
         fi
-        break
-    done
-    FN980_QUIRK=$(echo "$output" | grep FN980 | wc -l)
-    if [[ $FN980_QUIRK == 1 ]]; then
-        info "FN980 modem detected, start-network with profile ID"
-        _profile=1
     fi
 }
 
@@ -274,8 +288,8 @@ add_qmimux() {
     local iface=$1
     local mux_id=$2
 
-    info "Creating qmimux with id $mux_id"
     if [[ $_pcie -eq 1 ]]; then
+        info "Creating rmnet with id $mux_id"
         exe "ip link add link $_iface type rmnet mux_id $_muxid"
 
         # Retrieving the name of the just created rmnet.
@@ -295,7 +309,8 @@ add_qmimux() {
             _qmimux=`ip link show| grep rmnet1 | cut -d' ' -f2 | cut -d'@' -f1`
         fi
     else
-        curr_mux_id=$(cat /sys/class/net/$_iface/qmi/add_mux | grep $mux_id | wc -l)
+        hex_mux_id=$(printf "%x" "$mux_id")
+        curr_mux_id=$(cat /sys/class/net/"$_iface"/qmi/add_mux | grep -c 0x"$hex_mux_id")
         if [[ $curr_mux_id != "0" ]]; then
             # We can not get the qmimux associated with a given mux-id, so we exit
             # with an error message if the required mux-id is already in use
@@ -303,7 +318,7 @@ add_qmimux() {
             err "Please, select a different mux-id, or remove them all before trying again."
             exit 1
         fi
-
+        info "Creating qmimux with id $mux_id"
         has_link_add=$(qmicli --help-link-management 2>/dev/null | grep link-add | wc -l)
         if [[ $has_link_add == "0" ]]; then
             add_qmimux_manually $iface $mux_id
@@ -429,15 +444,25 @@ wds_bind_mux_data_port() {
     exe "qmicli -p -d $_device --wds-bind-mux-data-port=mux-id=${_muxid},ep-iface-number=${ep_iface_number},ep-type=${ep_type} --client-no-release-cid --client-cid=$_cid"
 }
 
+wds_set_ip_family_preference() {
+    # Mandatory for dual-ip connections
+    info "Setting IP family preference v$_ip_type"
+    exe "qmicli -p -d $_device --wds-set-ip-family=$_ip_type --client-no-release-cid --client-cid=$_cid"
+}
+
 wds_create_profile_id() {
-    if [[ "$_ip_type" == 4 ]]; then
-        _pdp_type="IP"
-    else if [[ "$_ip_type" == 6 ]]; then
+    if [[ $_dual == 1 ]]; then
+        _pdp_type="IPV4V6"
+    else
+        if [ "$_ip_type" == 4 ]; then
+            _pdp_type="IP"
+        elif [ "$_ip_type" == 6 ]; then
             _pdp_type="IPV6"
         else
             _pdp_type="IPV4V6"
         fi
     fi
+
     info "Creating profile"
     cmd="qmicli $verbose -p -d $_device --wds-create-profile=3gpp,apn=$_apn,pdp-type=$_pdp_type --client-no-release-cid --client-cid=$_cid"
     exe "$cmd"
@@ -449,7 +474,8 @@ wds_start_network() {
     if [[ -z "$_profile" ]]; then
         cmd="qmicli $verbose -p -d $_device --wds-start-network=apn=$_apn,ip-type=$_ip_type --client-no-release-cid --client-cid=$_cid"
     else
-        cmd="qmicli $verbose -p -d $_device --wds-start-network=3gpp-profile=$_profile_id --client-no-release-cid --client-cid=$_cid"
+        cmd="qmicli $verbose -p -d $_device --wds-start-network=3gpp-profile=$_profile_id,ip-type=$_ip_type \
+            --client-no-release-cid --client-cid=$_cid"
     fi
     exe "$cmd" "$sleep_seconds"
     check=$(echo "$output" | grep -c "Network started")
@@ -466,16 +492,23 @@ save_configuration_to_file() {
     cmd="qmicli $verbose -p -d $_device --wds-get-current-settings --client-no-release-cid --client-cid=$_cid"
     exe "$cmd"
 
-    ip=$(echo "$output" | sed -n "s/IPv4 address: \([0-9\./]*\)/\1/p" | sed -n "s/\s*//p")
-    gw=$(echo "$output" | sed -n "s/IPv4 gateway address: \([0-9\.]*\)/\1/p" | sed -n "s/\s*//p")
-    netmask=$(echo "$output" | sed -n "s/IPv4 subnet mask: \([0-9\.]*\)/\1/p" | sed -n "s/\s*//p")
-    network=$(mask2cdr "$netmask")
+    if [[ $_ip_type == 4 ]]; then
+        ip=$(echo "$output" | sed -n "s/IPv4 address: \([0-9\./]*\)/\1/p" | sed -n "s/\s*//p")
+        gw=$(echo "$output" | sed -n "s/IPv4 gateway address: \([0-9\.]*\)/\1/p" | sed -n "s/\s*//p")
+        netmask=$(echo "$output" | sed -n "s/IPv4 subnet mask: \([0-9\.]*\)/\1/p" | sed -n "s/\s*//p")
+        cidr=$(mask2cdr "$netmask")
+        dns1=$(echo "$output" | sed -n "s/IPv4 primary DNS: \([0-9\./]*\)/\1/p" | sed -n "s/\s*//p")
+        dns2=$(echo "$output" | sed -n "s/IPv4 secondary DNS: \([0-9\./]*\)/\1/p" | sed -n "s/\s*//p")
+    else
+        ip=$(echo "$output" | sed -n "s/IPv6 address: \([0-9\./]*\)/\1/p" | sed -n "s/\s*//p")
+        gw=$(echo "$output" | sed -n "s/IPv6 gateway address: \([0-9\.]*\)/\1/p" | sed -n "s/\s*//p")
+        dns1=$(echo "$output" | sed -n "s/IPv6 primary DNS: \([0-9\./]*\)/\1/p" | sed -n "s/\s*//p")
+        dns2=$(echo "$output" | sed -n "s/IPv6 secondary DNS: \([0-9\./]*\)/\1/p" | sed -n "s/\s*//p")
+    fi
 
-    dns1=$(echo "$output" | sed -n "s/IPv4 primary DNS: \([0-9\./]*\)/\1/p" | sed -n "s/\s*//p")
-    dns2=$(echo "$output" | sed -n "s/IPv4 secondary DNS: \([0-9\./]*\)/\1/p" | sed -n "s/\s*//p")
     qmimux_mtu=$(echo "$output" | sed -nr "s/\s*MTU: ([0-9]+)/\1/p")
 
-    OUT=ip-session-$_qmimux
+    OUT=ip-session-$_qmimux-$_ip_type
     [[ -f "$OUT" ]] && rm "$OUT"
 
     {
@@ -492,7 +525,7 @@ save_configuration_to_file() {
         echo "DNS1=$dns1"
         echo "DNS2=$dns2"
         echo "MTU=$qmimux_mtu"
-        echo "CDR=$network"
+        echo "CIDR=$cidr"
     } >> "$OUT"
     info "ip configuration saved in $OUT"
 }
@@ -529,8 +562,13 @@ check_connection_status() {
 
 set_network_address() {
     # Network interface needs to be set up after start-network
-    info "Setting network address"
-    exe "ip addr add $ip/$network dev $_qmimux"
+    info "Setting IPV$_ip_type network address"
+
+    if [[ $_ip_type == 4 ]]; then
+        exe "ip addr add $ip/$cidr dev $_qmimux"
+    else
+        exe "ip addr add $ip dev $_qmimux"
+    fi
 
     info "Setting $_iface up"
     exe "ip link set $_iface up"
@@ -547,19 +585,35 @@ wds_stop_network() {
 }
 
 release() {
-    configuration="ip-session-$_iface"
-    if [[ ! -f  $configuration ]]; then
+    configuration="ip-session-$_iface-$_ip_type"
+    if [[ ! -f $configuration ]]; then
         err "could not find configuration file $configuration"
         err "Check if the --iface flag is configured correctly (e.g. qmimux0/rmnet0, not wwan0)"
         exit 1
     fi
+    if [[ $_ip_type == 4 ]]; then
+        check_dual=6
+    else
+        check_dual=4
+    fi
     source "$configuration"
 
+    configuration_dual="ip-session-$_iface-$check_dual"
     wds_stop_network
-    info "set $IFACE down"
-    exe "ip link set $IFACE down"
-    remove_qmimux "$IFACE" "$QMIMUX_IFACE" "$MUX_ID" "$PCIe"
-    wds_delete_profile
+    if [[ ! -f $configuration_dual ]]; then
+        info "set $IFACE down"
+        exe "ip link set $IFACE down"
+        remove_qmimux "$IFACE" "$QMIMUX_IFACE" "$MUX_ID" "$PCIe"
+        wds_delete_profile
+    else
+        local ip=${IP:-$_ip}
+        local cidr=${CIDR}
+        if [[ $_ip_type == 4 ]]; then
+            exe "ip addr del $ip/$cidr dev $QMIMUX_IFACE"
+        else
+            exe "ip addr del $ip dev $QMIMUX_IFACE"
+        fi
+    fi
     info "Deleting '$configuration' configuration file."
     exe "rm $configuration"
 }
@@ -575,6 +629,10 @@ fi
 
 if [[ -n $_release ]]; then
     release
+    if [[ $_dual == 1 ]]; then
+        _ip_type=6
+        release
+    fi
 fi
 
 if [[ -n $_connect ]]; then
@@ -587,11 +645,24 @@ if [[ -n $_connect ]]; then
     wds_get_client_id
     wds_bind_mux_data_port
     [[ -n $_profile ]] && wds_create_profile_id
+    wds_set_ip_family_preference
     wds_start_network
     check_connection_status
     save_configuration_to_file
     set_mtu "$qmimux_mtu"
     set_network_address
+
+    if [[ $_dual == 1 ]]; then
+        _ip_type=6
+        _cid=0
+        wds_get_client_id
+        wds_bind_mux_data_port
+        wds_set_ip_family_preference
+        wds_start_network
+        check_connection_status
+        save_configuration_to_file
+        set_network_address
+    fi
 
     info "################################################################"
     info "$_qmimux interface configured. The network is currently DOWN"
