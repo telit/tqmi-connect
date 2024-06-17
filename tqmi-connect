@@ -83,6 +83,7 @@ _iface=wwan0
 _muxid=112
 _ip_type=4
 _mtu=16384
+_ep_number=0xFFFFFFFF
 
 # Global variable for saving the MTU for the qmimux interface
 qmimux_mtu=
@@ -100,6 +101,7 @@ for arg in "$@"; do
 "--apn") set -- "$@" "-a";;
 "--iface") set -- "$@" "-i";;
 "--muxid") set -- "$@" "-m";;
+"--epnumber") set -- "$@" "-e";;
 "--ip_type") set -- "$@" "-p";;
 "--mtu") set -- "$@" "-u";;
 "--table") set -- "$@" "-t";;
@@ -115,7 +117,7 @@ function print_illegal() {
 }
 
 # Parsing flags and arguments
-while getopts 'hcrvlxd:a:i:m:p:u:' OPT; do
+while getopts 'hcrvlxd:a:i:m:e:p:u:' OPT; do
     case $OPT in
         h) sed -ne 's/^## \(.*\)/\1/p' $0
            exit 1 ;;
@@ -128,6 +130,7 @@ while getopts 'hcrvlxd:a:i:m:p:u:' OPT; do
         a) _apn=$OPTARG ;;
         i) _iface=$OPTARG ;;
         m) _muxid=$OPTARG ;;
+        e) _ep_number=$OPTARG ;;
         p) _ip_type=$OPTARG ;;
         u) _mtu=$OPTARG ;;
         \?) print_illegal $@ >&2;
@@ -375,12 +378,22 @@ remove_qmimux() {
 }
 
 configure_iface() {
+    local ep_type="hsusb"
+    local ep_iface_number=2
+    if [[ $_pcie -eq 1 ]]; then
+        ep_type="pcie"
+        ep_iface_number=4
+    fi
+    if [[ $_ep_number -ne 0xFFFFFFFF ]]; then
+        ep_iface_number=$_ep_number
+    fi
+
     info "Configuring parent network interface..."
     exe "ip addr flush $_iface"
     exe "ip link set $_iface down"
 
     info "Setting data format..."
-    exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap,dl-max-datagrams=32,dl-datagram-max-size=$_mtu"
+    exe "qmicli -p -d $_device --wda-set-data-format=link-layer-protocol=raw-ip,ul-protocol=qmap,dl-protocol=qmap,dl-max-datagrams=32,dl-datagram-max-size=$_mtu,ep-type=${ep_type},ep-iface-number=${ep_iface_number}"
     mtu=$(echo "$output" | sed -nr "s/Downlink data aggregation max size: '([0-9]+)'/\1/p")
 
     if [[ $_pcie -eq 0 ]]; then
@@ -438,6 +451,9 @@ wds_bind_mux_data_port() {
     if [[ $_pcie -eq 1 ]]; then
         ep_type="pcie"
         ep_iface_number=4
+    fi
+    if [[ $_ep_number -ne 0xFFFFFFFF ]]; then
+        ep_iface_number=$_ep_number
     fi
 
     info "Binding mux data port \"$_muxid\""
