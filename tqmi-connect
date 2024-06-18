@@ -198,6 +198,7 @@ mask2cdr () {
 exe() {
     # command to execute
     cmd="$1"
+    optional=$2
     # time to wait after the command has been executed.
     # The 0.5 seconds interval has been experimentally shown effective
     # to smooth the execution of the script. Only wds-start-network requires
@@ -212,7 +213,7 @@ exe() {
         echo "    $output"
     fi
     echo ""
-    [[ $errcode != "0" ]] && exit 1
+    [[ $errcode != "0" && $optional -ne 1 ]] && exit 1
     [[ $sleep_time ]] && sleep $sleep_time
     return $errcode
 }
@@ -433,8 +434,12 @@ nas_get_home_network() {
 nas_get_signal_strength() {
     info "Checking Signal strength"
     cmd="qmicli -p -d $_device --nas-get-signal-strength"
-    exe "$cmd"
+    exe "$cmd" 1
 
+    if [[ $? -ne 0 ]]; then
+        cmd="qmicli -p -d $_device --nas-get-signal-info"
+        exe "$cmd"
+    fi
 }
 
 wds_get_client_id() {
